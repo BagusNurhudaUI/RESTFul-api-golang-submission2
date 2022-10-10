@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-
 	"submission2/models"
 
 	"github.com/gin-gonic/gin"
@@ -15,29 +14,55 @@ func (db *InDB) CreateOrder(c *gin.Context) {
 	var (
 		order  models.Order
 		result gin.H
+		code   int
+		item   models.Item
 	)
 	id := uuid.New().String()
 	order.ID = id
 	if err := c.BindJSON(&order); err != nil {
 		panic(err)
 	}
-	db.DB.Create(&order)
-	result = gin.H{
-		"order": order,
+	fmt.Println(order.Items, item)
+	if len(order.Items) <= 0 {
+		code = 409
+		result = gin.H{
+			"message": "Cannot put order, item is empty",
+		}
+	} else if len(order.Items) > 0 {
+		db.DB.Create(&order)
+		code = 200
+		result = gin.H{
+			"message": "Successfully created order",
+			"order":   order,
+		}
+	} else {
+		result = gin.H{
+			"message": "Something went wrong, please try again the input",
+		}
 	}
-	c.JSON(http.StatusOK, result)
+	c.JSON(code, result)
 }
 
 func (db *InDB) GetOrder(c *gin.Context) {
-	var orders []models.Order
+	var (
+		orders []models.Order
+		code   int
+		result gin.H
+	)
 	err := db.DB.Preload("Items").Find(&orders).Error
 	if err != nil {
+		result = gin.H{
+			"message": "Something went wrong, please try again",
+		}
 		panic(err)
+	} else {
+		code = http.StatusOK
+		result = gin.H{
+			"order": orders,
+		}
+		c.JSON(code, result)
 	}
-	result := gin.H{
-		"order": orders,
-	}
-	c.JSON(http.StatusOK, result)
+
 }
 
 func (db *InDB) GetOrderById(c *gin.Context) {
@@ -68,28 +93,40 @@ func (db *InDB) GetOrderById(c *gin.Context) {
 func (db *InDB) UpdateOrder(c *gin.Context) {
 	params := c.Param("id")
 	log.Println("Update Order", params)
-	//notUpdatedOrder := models.Order{}
 	var (
 		result       gin.H
 		UpdatedOrder models.Order
+		code         int
 	)
-	// db.First(&UpdatedOrder, "id = ?", params)
 	UpdatedOrder.ID = params
 	if err := c.BindJSON(&UpdatedOrder); err != nil {
 		panic(err)
 	}
 
-	// err := db.Model(&notUpdatedOrder).Where("id = ?", params).Updates(&UpdatedOrder).Error()
-	// if err != nil {
-	// 	fmt.Printf("Error updating order")
-	// }
-	db.DB.Where("order_id= ?", params).Delete(&models.Item{})
-	db.DB.Save(&UpdatedOrder)
-	result = gin.H{
-		"order": UpdatedOrder,
+	if err := db.DB.First(&models.Order{}, "id = ?", params).Error; err != nil {
+		result = gin.H{
+			"message": "Cannot found ID in database",
+		}
+		code = http.StatusNotFound
+	} else if len(UpdatedOrder.Items) <= 0 {
+		code = 409
+		result = gin.H{
+			"message": "Cannot edit order, item is empty",
+		}
+	} else if len(UpdatedOrder.Items) > 0 {
+		db.DB.Where("order_id= ?", params).Delete(&models.Item{})
+		db.DB.Save(&UpdatedOrder)
+		result = gin.H{
+			"message": "Successfully updated order",
+			"order":   UpdatedOrder,
+		}
+	} else {
+		result = gin.H{
+			"message": "Something went wrong, please try again the input",
+		}
 	}
 
-	c.JSON(http.StatusOK, result)
+	c.JSON(code, result)
 }
 
 func (db *InDB) DeleteOrder(c *gin.Context) {
